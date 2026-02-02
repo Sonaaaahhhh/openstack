@@ -1,41 +1,20 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
 
+const baseUrl = 'http://localhost:3001/persons'
+
 const App = () => {
   const [persons, setPersons] = useState([])
   const [newName, setNewName] = useState('')
   const [newNumber, setNewNumber] = useState('')
   const [filter, setFilter] = useState('')
 
-  // FETCH DATA FROM SERVER
+  // Fetch data from server
   useEffect(() => {
-    axios.get('http://localhost:3001/persons')
-      .then(response => {
-        setPersons(response.data)
-      })
+    axios.get(baseUrl).then(response => {
+      setPersons(response.data)
+    })
   }, [])
-
-  const addPerson = (event) => {
-    event.preventDefault()
-
-    const existing = persons.find(p => p.name === newName)
-    if (existing) {
-      alert(`${newName} is already added to phonebook`)
-      return
-    }
-
-    const personObject = {
-      name: newName,
-      number: newNumber
-    }
-
-    axios.post('http://localhost:3001/persons', personObject)
-      .then(response => {
-        setPersons(persons.concat(response.data))
-        setNewName('')
-        setNewNumber('')
-      })
-  }
 
   const handleNameChange = (event) => {
     setNewName(event.target.value)
@@ -49,15 +28,71 @@ const App = () => {
     setFilter(event.target.value)
   }
 
-  const personsToShow = persons.filter(person =>
-    person.name.toLowerCase().includes(filter.toLowerCase())
-  )
+  const addPerson = (event) => {
+    event.preventDefault()
+
+    const existingPerson = persons.find(
+      person => person.name.toLowerCase() === newName.toLowerCase()
+    )
+
+    if (existingPerson) {
+      const confirmUpdate = window.confirm(
+        `${existingPerson.name} is already added to phonebook, replace the old number with a new one?`
+      )
+
+      if (confirmUpdate) {
+        const updatedPerson = { ...existingPerson, number: newNumber }
+
+        axios
+          .put(`${baseUrl}/${existingPerson.id}`, updatedPerson)
+          .then(response => {
+            setPersons(
+              persons.map(person =>
+                person.id !== existingPerson.id ? person : response.data
+              )
+            )
+            setNewName('')
+            setNewNumber('')
+          })
+      }
+    } else {
+      const personObject = {
+        name: newName,
+        number: newNumber
+      }
+
+      axios.post(baseUrl, personObject).then(response => {
+        setPersons(persons.concat(response.data))
+        setNewName('')
+        setNewNumber('')
+      })
+    }
+  }
+
+  const deletePerson = (id) => {
+    const person = persons.find(p => p.id === id)
+
+    if (window.confirm(`Delete ${person.name}?`)) {
+      axios.delete(`${baseUrl}/${id}`).then(() => {
+        setPersons(persons.filter(p => p.id !== id))
+      })
+    }
+  }
+
+  const personsToShow =
+    filter === ''
+      ? persons
+      : persons.filter(person =>
+          person.name.toLowerCase().includes(filter.toLowerCase())
+        )
 
   return (
     <div>
       <h2>Phonebook</h2>
 
-      filter shown with <input value={filter} onChange={handleFilterChange} />
+      <div>
+        filter shown with <input value={filter} onChange={handleFilterChange} />
+      </div>
 
       <h3>Add a new</h3>
 
@@ -76,11 +111,12 @@ const App = () => {
       <h3>Numbers</h3>
 
       <ul>
-        {personsToShow.map(person =>
+        {personsToShow.map(person => (
           <li key={person.id}>
-            {person.name} {person.number}
+            {person.name} {person.number}{' '}
+            <button onClick={() => deletePerson(person.id)}>delete</button>
           </li>
-        )}
+        ))}
       </ul>
     </div>
   )
