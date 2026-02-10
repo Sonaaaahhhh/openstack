@@ -1,62 +1,22 @@
 require('dotenv').config()
 const express = require('express')
-const morgan = require('morgan')
 const cors = require('cors')
 const mongoose = require('mongoose')
 
+const Person = require('./models/person')
+
 const app = express()
 
-// Middleware
-app.use(express.json())
 app.use(cors())
+app.use(express.json())
 app.use(express.static('dist'))
 
-morgan.token('body', (req) => JSON.stringify(req.body))
-app.use(morgan(':method :url :status :res[content-length] - :response-time ms :body'))
-
-// MongoDB connection
-const url = process.env.MONGODB_URI
-mongoose.set('strictQuery', false)
-
-mongoose.connect(url)
+mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('connected to MongoDB'))
-  .catch(error => console.log('error connecting to MongoDB:', error.message))
+  .catch(error => console.log('MongoDB error:', error.message))
 
-// Schema with validation
-const personSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    minlength: 3,
-    required: true
-  },
-  number: {
-    type: String,
-    minlength: 8,
-    validate: {
-      validator: function (v) {
-        return /^\d{2,3}-\d+$/.test(v)
-      },
-      message: props => `${props.value} is not a valid phone number`
-    },
-    required: true
-  }
-})
-
-personSchema.set('toJSON', {
-  transform: (document, returnedObject) => {
-    returnedObject.id = returnedObject._id.toString()
-    delete returnedObject._id
-    delete returnedObject.__v
-  }
-})
-
-const Person = mongoose.model('Person', personSchema)
-
-// Routes
 app.get('/api/persons', (req, res) => {
-  Person.find({}).then(persons => {
-    res.json(persons)
-  })
+  Person.find({}).then(persons => res.json(persons))
 })
 
 app.get('/api/persons/:id', (req, res, next) => {
@@ -69,64 +29,44 @@ app.get('/api/persons/:id', (req, res, next) => {
 })
 
 app.post('/api/persons', (req, res, next) => {
-  const body = req.body
-
-  const person = new Person({
-    name: body.name,
-    number: body.number,
-  })
+  const person = new Person(req.body)
 
   person.save()
-    .then(savedPerson => {
-      res.json(savedPerson)
-    })
-    .catch(error => next(error))
-})
-
-app.delete('/api/persons/:id', (req, res, next) => {
-  Person.findByIdAndRemove(req.params.id)
-    .then(() => {
-      res.status(204).end()
-    })
+    .then(saved => res.json(saved))
     .catch(error => next(error))
 })
 
 app.put('/api/persons/:id', (req, res, next) => {
-  const body = req.body
-
-  const person = {
-    name: body.name,
-    number: body.number,
-  }
+  const { name, number } = req.body
 
   Person.findByIdAndUpdate(
     req.params.id,
-    person,
+    { name, number },
     { new: true, runValidators: true, context: 'query' }
   )
-    .then(updatedPerson => {
-      res.json(updatedPerson)
-    })
+    .then(updated => res.json(updated))
     .catch(error => next(error))
 })
 
-// Error handler
-const errorHandler = (error, req, res, next) => {
-  console.error(error.message)
+app.delete('/api/persons/:id', (req, res, next) => {
+  Person.findByIdAndDelete(req.params.id)
+    .then(() => res.status(204).end())
+    .catch(error => next(error))
+})
 
+const errorHandler = (error, req, res, next) => {
   if (error.name === 'CastError') {
     return res.status(400).send({ error: 'malformatted id' })
-  } else if (error.name === 'ValidationError') {
+  }
+  if (error.name === 'ValidationError') {
     return res.status(400).json({ error: error.message })
   }
-
   next(error)
 }
 
 app.use(errorHandler)
 
-// Server
-const PORT = process.env.PORT || 3001
+const PORT = process.env.PORT
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`)
 })
